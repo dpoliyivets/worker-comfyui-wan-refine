@@ -124,7 +124,7 @@ COPY src/extra_model_paths.yaml ./
 
 # Add handler and startup scripts
 WORKDIR /
-COPY src/start.sh src/network_volume.py handler.py test_input.json ./
+COPY src/start.sh src/network_volume.py handler.py ./
 RUN chmod +x /start.sh
 COPY scripts/comfy-manager-set-mode.sh /usr/local/bin/comfy-manager-set-mode
 RUN chmod +x /usr/local/bin/comfy-manager-set-mode || true
