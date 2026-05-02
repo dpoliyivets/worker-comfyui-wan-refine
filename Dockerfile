@@ -111,12 +111,13 @@ RUN mkdir -p /comfyui/models/facerestore_models \
     && wget -q -O /comfyui/models/facerestore_models/codeformer-v0.1.0.pth \
        "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/codeformer.pth"
 
-# Pre-stage RIFE 4.7 checkpoint so the first cold start doesn't burn a minute
-# downloading it. ComfyUI-Frame-Interpolation looks under
-# custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rife/ by default.
-RUN mkdir -p /comfyui/custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rife \
-    && wget -q -O /comfyui/custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rife/rife47.pth \
-       "https://github.com/styler00dollar/VSGAN-tensorrt-docker/releases/download/models/rife47.pth"
+# RIFE checkpoint (rife47.pth) is auto-downloaded by ComfyUI-Frame-Interpolation
+# at first invocation of the RIFE VFI node — the node's `vfi_models/rife/` loader
+# fetches it on demand. We deliberately don't pre-stage at build time because the
+# canonical mirrors (RIFE's Google Drive, third-party GitHub releases) are not
+# reliably wget-able. First cold start pays ~30s extra; every subsequent worker
+# on this image reuses the layer-cached download under /comfyui/custom_nodes/
+# ComfyUI-Frame-Interpolation/ckpts/.
 
 # Add extra model paths for network volume
 WORKDIR /comfyui
