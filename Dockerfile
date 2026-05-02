@@ -71,97 +71,52 @@ RUN pip install torch torchvision torchaudio --index-url https://download.pytorc
 RUN git clone https://github.com/comfyanonymous/ComfyUI.git /comfyui \
     && cd /comfyui && pip install -r requirements.txt
 
-# Install ComfyUI-Manager
+# Install ComfyUI-Manager (general utility, kept for ad-hoc node management
+# during dev — not load-bearing at runtime for the refinement workflow).
 RUN cd /comfyui/custom_nodes \
     && git clone https://github.com/ltdrdata/ComfyUI-Manager.git \
     && cd ComfyUI-Manager && pip install -r requirements.txt || true
 
-# Install Impact-Pack for FaceDetailer/DetailerForEach
-RUN cd /comfyui/custom_nodes \
-    && git clone https://github.com/ltdrdata/ComfyUI-Impact-Pack.git \
-    && cd ComfyUI-Impact-Pack && pip install -r requirements.txt || true
-
-# Install Impact-Subpack — provides UltralyticsDetectorProvider (moved out of main pack in V8+)
-RUN cd /comfyui/custom_nodes \
-    && git clone https://github.com/ltdrdata/ComfyUI-Impact-Subpack.git \
-    && cd ComfyUI-Impact-Subpack && pip install -r requirements.txt || true
-
-# Install WanVideoWrapper — Wan2.2 video generation nodes
-# (Bundles WanVideoLoraSelect + WanVideoTeaCache custom nodes used by the
-# cost-optimized base workflow.)
-RUN cd /comfyui/custom_nodes \
-    && git clone https://github.com/kijai/ComfyUI-WanVideoWrapper.git \
-    && cd ComfyUI-WanVideoWrapper && pip install -r requirements.txt || true
-
-# Install sage-attention so WanVideoModelLoader.attention_mode="sageattn" works.
-# Triton ships with the cu124 PyTorch wheel; the sageattention wheel pulls a
-# matching prebuilt kernel — no build step required.
-RUN pip install sageattention
-
-# Install VideoHelperSuite — video I/O utilities (combine frames, load video, etc.)
+# Install VideoHelperSuite — provides VHS_LoadVideoPath (decode draft mp4 to
+# IMAGE batch) and VHS_VideoCombine (re-encode refined frames to mp4).
 RUN cd /comfyui/custom_nodes \
     && git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git \
     && cd ComfyUI-VideoHelperSuite && pip install -r requirements.txt || true
 
-# Install ComfyUI-Frame-Interpolation — RIFE / FILM / GMFSS frame interpolation nodes.
-# Used by the refinement workflow to double 16fps drafts to 32fps.
+# Install ComfyUI-Frame-Interpolation — provides RIFE VFI node. Used by the
+# refinement workflow to double 16fps draft → 32fps output.
 RUN cd /comfyui/custom_nodes \
     && git clone https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git \
     && cd ComfyUI-Frame-Interpolation && pip install -r requirements-no-cupy.txt || true
 
 # Install facerestore_cf — provides FaceRestoreCFWithModel + FaceRestoreModelLoader.
-# Lightweight per-frame face restore (no diffusion sampler), suitable for video
-# refinement where Impact-Pack's FaceDetailer would be 77× too expensive per clip.
+# Lightweight per-frame face restore (no diffusion sampler) — suitable for video
+# refinement where a sampler-based FaceDetailer would be 77× too expensive per clip.
 RUN cd /comfyui/custom_nodes \
     && git clone https://github.com/mav-rik/facerestore_cf.git \
     && cd facerestore_cf && pip install -r requirements.txt || true
 
-# Ensure ultralytics is installed (required for UltralyticsDetectorProvider YOLO loading)
-RUN pip install ultralytics
-
 # Install handler dependencies
 RUN pip install runpod requests websocket-client
 
-# Download YOLO detection models (bbox + segmentation)
-RUN mkdir -p /comfyui/models/ultralytics/bbox /comfyui/models/ultralytics/segm \
-    && wget -q -O /comfyui/models/ultralytics/bbox/face_yolov8n.pt \
-       "https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8n.pt" \
-    && wget -q -O /comfyui/models/ultralytics/bbox/hand_yolov8s.pt \
-       "https://huggingface.co/Bingsu/adetailer/resolve/main/hand_yolov8s.pt"
-
-# Copy nipple segmentation model (ADetailer Nipples v2.0 YOLO11s-seg, from CivitAI #490259)
-COPY assets/nipples_v2_yolov11s-seg.pt /comfyui/models/ultralytics/segm/nipples_v2_yolov11s-seg.pt
-
-# Download upscale models
-# RealESRGAN_x4plus is used by the video refinement workflow for the 480p→1920p
-# pre-downscale; the others are kept from the upstream image for completeness.
+# Download Real-ESRGAN x4 upscale model. Used by ImageUpscaleWithModel in the
+# refinement workflow to take 480→1920px frames before the lanczos downscale to 1080.
 RUN mkdir -p /comfyui/models/upscale_models \
-    && wget -q -O /comfyui/models/upscale_models/4x-UltraSharp.pth \
-       "https://huggingface.co/lokCX/4x-Ultrasharp/resolve/main/4x-UltraSharp.pth" \
-    && wget -q -O /comfyui/models/upscale_models/4x_foolhardy_Remacri.pth \
-       "https://huggingface.co/FacehugmanIII/4x_foolhardy_Remacri/resolve/main/4x_foolhardy_Remacri.pth" \
-    && wget -q -O /comfyui/models/upscale_models/RealESRGAN_x2plus.pth \
-       "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth" \
     && wget -q -O /comfyui/models/upscale_models/RealESRGAN_x4plus.pth \
        "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth"
 
-# Download RIFE model used by ComfyUI-Frame-Interpolation. The Frame-Interpolation
-# node looks under /comfyui/custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rife/
-# by default — pre-stage the checkpoint so the first cold start doesn't burn a
-# minute downloading it.
-RUN mkdir -p /comfyui/custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rife \
-    && wget -q -O /comfyui/custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rife/rife47.pth \
-       "https://github.com/styler00dollar/VSGAN-tensorrt-docker/releases/download/models/rife47.pth"
-
-# Download SAM model for precise segmentation masking in FaceDetailer
-RUN mkdir -p /comfyui/models/sams \
-    && wget -q -O /comfyui/models/sams/sam_vit_b_01ec64.pth \
-       "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth"
-
-# Download CodeFormer face restoration model (final face cleanup after upscaling)
+# Download CodeFormer face restoration model. Used by FaceRestoreModelLoader in
+# the refinement workflow's per-frame face pass.
 RUN mkdir -p /comfyui/models/facerestore_models \
     && wget -q -O /comfyui/models/facerestore_models/codeformer-v0.1.0.pth \
        "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/codeformer.pth"
+
+# Pre-stage RIFE 4.7 checkpoint so the first cold start doesn't burn a minute
+# downloading it. ComfyUI-Frame-Interpolation looks under
+# custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rife/ by default.
+RUN mkdir -p /comfyui/custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rife \
+    && wget -q -O /comfyui/custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rife/rife47.pth \
+       "https://github.com/styler00dollar/VSGAN-tensorrt-docker/releases/download/models/rife47.pth"
 
 # Add extra model paths for network volume
 WORKDIR /comfyui
