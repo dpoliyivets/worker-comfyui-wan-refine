@@ -83,41 +83,15 @@ RUN cd /comfyui/custom_nodes \
     && git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git \
     && cd ComfyUI-VideoHelperSuite && pip install -r requirements.txt || true
 
-# Install ComfyUI-Frame-Interpolation — provides RIFE VFI node. Used by the
-# refinement workflow to double 16fps draft → 32fps output.
-RUN cd /comfyui/custom_nodes \
-    && git clone https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git \
-    && cd ComfyUI-Frame-Interpolation && pip install -r requirements-no-cupy.txt || true
-
-# Install facerestore_cf — provides FaceRestoreCFWithModel + FaceRestoreModelLoader.
-# Lightweight per-frame face restore (no diffusion sampler) — suitable for video
-# refinement where a sampler-based FaceDetailer would be 77× too expensive per clip.
-RUN cd /comfyui/custom_nodes \
-    && git clone https://github.com/mav-rik/facerestore_cf.git \
-    && cd facerestore_cf && pip install -r requirements.txt || true
-
 # Install handler dependencies
 RUN pip install runpod requests websocket-client
 
 # Download Real-ESRGAN x4 upscale model. Used by ImageUpscaleWithModel in the
-# refinement workflow to take 480→1920px frames before the lanczos downscale to 1080.
+# refinement workflow to take 480→1920px frames before the lanczos downscale to
+# the target dimensions.
 RUN mkdir -p /comfyui/models/upscale_models \
     && wget -q -O /comfyui/models/upscale_models/RealESRGAN_x4plus.pth \
        "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth"
-
-# Download CodeFormer face restoration model. Used by FaceRestoreModelLoader in
-# the refinement workflow's per-frame face pass.
-RUN mkdir -p /comfyui/models/facerestore_models \
-    && wget -q -O /comfyui/models/facerestore_models/codeformer-v0.1.0.pth \
-       "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/codeformer.pth"
-
-# RIFE checkpoint (rife47.pth) is auto-downloaded by ComfyUI-Frame-Interpolation
-# at first invocation of the RIFE VFI node — the node's `vfi_models/rife/` loader
-# fetches it on demand. We deliberately don't pre-stage at build time because the
-# canonical mirrors (RIFE's Google Drive, third-party GitHub releases) are not
-# reliably wget-able. First cold start pays ~30s extra; every subsequent worker
-# on this image reuses the layer-cached download under /comfyui/custom_nodes/
-# ComfyUI-Frame-Interpolation/ckpts/.
 
 # Add extra model paths for network volume
 WORKDIR /comfyui
